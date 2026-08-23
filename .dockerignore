@@ -1,0 +1,28 @@
+# VCS and CI metadata are not part of the build
+.git
+.github
+.gitignore
+.gitmodules
+.gitpod.yml
+.editorconfig
+.nvmrc
+.yamllint
+
+# Things the image build does not need
+.cursor
+api
+docs
+e2e-tests
+tools
+
+# Build outputs / dependency directories
+**/node_modules
+**/dist
+**/bin
+server/bin
+server/dist
+webapp/channels/dist
+
+# Release artifacts
+*.tar.gz
+*.zip

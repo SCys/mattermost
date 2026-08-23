@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	maxUsersLimit     = 200
-	maxUsersHardLimit = 250
+	maxUsersLimit     = 200_000
+	maxUsersHardLimit = 250_000
 )
 
 // GetServerLimits returns the server's seat/post-history limits. The license-derived
