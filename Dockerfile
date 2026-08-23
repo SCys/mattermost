@@ -16,8 +16,25 @@ ARG RUNTIME_IMAGE=debian:bookworm-slim
 # ---------------------------------------------------------------------------
 FROM --platform=${BUILDPLATFORM} ${NODE_IMAGE} AS webapp
 WORKDIR /src/webapp
+
+# Copy workspace package definitions first to cache `npm ci` layer
+COPY webapp/package.json webapp/package-lock.json ./
+COPY webapp/channels/package.json ./channels/
+COPY webapp/platform/client/package.json ./platform/client/
+COPY webapp/platform/components/package.json ./platform/components/
+COPY webapp/platform/eslint-plugin/package.json ./platform/eslint-plugin/
+COPY webapp/platform/mattermost-redux/package.json ./platform/mattermost-redux/
+COPY webapp/platform/shared/package.json ./platform/shared/
+COPY webapp/platform/types/package.json ./platform/types/
+COPY webapp/patches/ ./patches/
+
+# Cache npm download cache across builds
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
+
+# Copy the rest of the webapp source and build
 COPY webapp/ ./
-RUN npm ci && npm run build
+RUN npm run build
 
 # ---------------------------------------------------------------------------
 # Stage 2: build the server binaries and assemble the /mattermost directory
@@ -35,16 +52,23 @@ RUN apt-get update \
 
 WORKDIR /src
 
-COPY server/ ./server/
-COPY --from=webapp /src/webapp/channels/dist ./webapp/channels/dist
+# Copy go.mod / go.sum files first to cache `go mod download` layer
+COPY server/go.mod server/go.sum ./server/
+COPY server/public/go.mod server/public/go.sum ./server/public/
 
-# Build the two server binaries for the target architecture. The server repo
-# has a nested module (server/public), so wire it up with a go.work file the
-# same way `make setup-go-work` does.
 RUN cd server \
     && go work init \
     && go work use . \
     && go work use ./public \
+    && go mod download
+
+# Copy the rest of server source and the pre-built web client
+COPY server/ ./server/
+COPY --from=webapp /src/webapp/channels/dist ./webapp/channels/dist
+
+# Build the two server binaries for the target architecture with Go build cache
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    cd server \
     && mkdir -p "bin/${TARGETOS}_${TARGETARCH}" \
     && echo "Building mattermost and mmctl for TARGETOS=${TARGETOS} TARGETARCH=${TARGETARCH}..." \
     && CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" go build \
