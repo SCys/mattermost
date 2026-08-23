@@ -106,6 +106,7 @@ RUN apt-get update \
     && useradd --uid 2000 --gid 2000 --home-dir /mattermost --shell /usr/sbin/nologin mattermost
 
 ENV PATH="/mattermost/bin:${PATH}" \
+    USER="mattermost" \
     MM_SERVICESETTINGS_ENABLELOCALMODE="true" \
     MM_INSTALL_TYPE="docker"
 
