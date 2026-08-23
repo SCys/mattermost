@@ -16,25 +16,9 @@ ARG RUNTIME_IMAGE=debian:bookworm-slim
 # ---------------------------------------------------------------------------
 FROM --platform=${BUILDPLATFORM} ${NODE_IMAGE} AS webapp
 WORKDIR /src/webapp
-
-# Copy workspace package definitions first to cache `npm ci` layer
-COPY webapp/package.json webapp/package-lock.json ./
-COPY webapp/channels/package.json ./channels/
-COPY webapp/platform/client/package.json ./platform/client/
-COPY webapp/platform/components/package.json ./platform/components/
-COPY webapp/platform/eslint-plugin/package.json ./platform/eslint-plugin/
-COPY webapp/platform/mattermost-redux/package.json ./platform/mattermost-redux/
-COPY webapp/platform/shared/package.json ./platform/shared/
-COPY webapp/platform/types/package.json ./platform/types/
-COPY webapp/patches/ ./patches/
-
-# Cache npm download cache across builds
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci
-
-# Copy the rest of the webapp source and build
 COPY webapp/ ./
-RUN npm run build
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci && npm run build
 
 # ---------------------------------------------------------------------------
 # Stage 2: build the server binaries and assemble the /mattermost directory
