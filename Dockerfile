@@ -23,8 +23,8 @@ RUN npm ci && npm run build
 # Stage 2: build the server binaries and assemble the /mattermost directory
 # ---------------------------------------------------------------------------
 FROM --platform=${BUILDPLATFORM} ${GO_IMAGE} AS builder
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+ARG TARGETOS
+ARG TARGETARCH
 ARG BUILD_NUMBER=dev
 ARG BUILD_DATE=unknown
 ARG BUILD_HASH=unknown
@@ -46,6 +46,7 @@ RUN cd server \
     && go work use . \
     && go work use ./public \
     && mkdir -p "bin/${TARGETOS}_${TARGETARCH}" \
+    && echo "Building mattermost and mmctl for TARGETOS=${TARGETOS} TARGETARCH=${TARGETARCH}..." \
     && CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" go build \
          -buildvcs=false -trimpath \
          -tags 'production' \
@@ -85,6 +86,7 @@ FROM ${RUNTIME_IMAGE} AS runtime
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
+        file \
         media-types \
         poppler-utils \
         tidy \
@@ -100,7 +102,8 @@ ENV PATH="/mattermost/bin:${PATH}" \
     MM_INSTALL_TYPE="docker"
 
 COPY --from=builder /src/server/dist/mattermost /mattermost
-RUN chown -R mattermost:mattermost /mattermost
+# Verify binary architecture matches target platform during build
+RUN file /mattermost/bin/mattermost && chown -R mattermost:mattermost /mattermost
 
 USER mattermost
 WORKDIR /mattermost
