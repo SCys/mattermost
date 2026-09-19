@@ -5,7 +5,7 @@ import {act, screen, waitFor, within} from '@testing-library/react';
 import React from 'react';
 
 import {ClientError} from '@mattermost/client';
-import {ChevronDownCircleOutlineIcon, FormatListBulletedIcon, MenuVariantIcon, PowerPlugOutlineIcon, SortAscendingIcon, SyncIcon} from '@mattermost/compass-icons/components';
+import {ChevronDownCircleOutlineIcon, FormatListBulletedIcon, MenuVariantIcon, PowerPlugOutlineIcon, SitemapIcon, SortAscendingIcon, SyncIcon} from '@mattermost/compass-icons/components';
 import type {PropertyField} from '@mattermost/types/properties';
 import type {DeepPartial} from '@mattermost/types/utilities';
 
@@ -95,6 +95,19 @@ function getReachableState(overrides: {licenseSku?: string; classificationMarkin
     state.entities!.admin = {
         config: {FeatureFlags: {ClassificationMarkings: classificationMarkingsFlagOn, ChannelAttributes: channelAttributesFlagOn}},
     } as EntitiesPartial['admin'];
+    return state;
+}
+
+// State where the table fetches the channel scope: Enterprise Advanced license
+// plus the ChannelAttributes flag in client config (where getFeatureFlagValue
+// reads it), matching the gate the table applies before fetching channel. Without
+// this the channel scope is skipped and the *-channel-* mocks below go unconsumed.
+function getChannelScopeState(): DeepPartial<GlobalState> {
+    const state = getBaseState();
+    state.entities!.general = {
+        config: {FeatureFlagChannelAttributes: 'true'},
+        license: {IsLicensed: 'true', SkuShortName: 'advanced'},
+    } as EntitiesPartial['general'];
     return state;
 }
 
@@ -214,6 +227,158 @@ describe('GlobalAttributesTable', () => {
         await screen.findByText('Aardvark Attribute');
         const names = screen.getAllByTestId('global-attribute-name').map((cell) => cell.textContent);
         expect(names).toEqual(['Aardvark Attribute', 'Zebra Attribute']);
+    });
+
+    describe('Non-template fields', () => {
+        // Keyed on the requested object type rather than a call-order queue: the
+        // component fetches the template scope first and the resource scopes after
+        // it, each paging until it sees an empty page.
+        function mockScopedFields(scopes: {template?: PropertyField[]; user?: PropertyField[]; channel?: PropertyField[]; post?: PropertyField[]}) {
+            getPropertyFields.mockImplementation((_group, objectType, _targetType, _targetId, opts) => {
+                if (opts?.cursorId) {
+                    return Promise.resolve([]);
+                }
+                return Promise.resolve(scopes[objectType as keyof typeof scopes] ?? []);
+            });
+        }
+
+        it('lists an unlinked field from each resource scope alongside templates', async () => {
+            mockScopedFields({
+                user: [makeField({id: 'u1', name: 'user_field', object_type: 'user'})],
+                channel: [makeField({id: 'c1', name: 'channel_field', object_type: 'channel'})],
+                post: [makeField({id: 'p1', name: 'post_field', object_type: 'post'})],
+            });
+
+            renderWithContext(<GlobalAttributesTable/>, getChannelScopeState());
+
+            expect(await screen.findByText('user_field')).toBeInTheDocument();
+            expect(screen.getByText('channel_field')).toBeInTheDocument();
+            expect(screen.getByText('post_field')).toBeInTheDocument();
+        });
+
+        it('excludes a non-template field that is linked to a template', async () => {
+            mockScopedFields({
+                user: [makeField({id: 'u1', name: 'linked_field', object_type: 'user', linked_field_id: 'template-1'})],
+            });
+
+            renderWithContext(<GlobalAttributesTable/>, getChannelScopeState());
+
+            expect(await screen.findByTestId('global-attributes-empty')).toBeInTheDocument();
+            expect(screen.queryByText('linked_field')).not.toBeInTheDocument();
+        });
+
+        it('sorts templates and non-template fields together by display name, not templates-then-non-templates', async () => {
+            mockScopedFields({
+                template: [
+                    makeField({id: 't1', name: 'charlie_template', attrs: {display_name: 'Charlie'}}),
+                    makeField({id: 't2', name: 'echo_template', attrs: {display_name: 'Echo'}}),
+                ],
+                user: [makeField({id: 'u1', name: 'bravo_user', object_type: 'user', attrs: {display_name: 'Bravo'}})],
+                channel: [makeField({id: 'c1', name: 'delta_channel', object_type: 'channel', attrs: {display_name: 'Delta'}})],
+            });
+
+            renderWithContext(<GlobalAttributesTable/>, getChannelScopeState());
+
+            await screen.findByText('Charlie');
+            const names = screen.getAllByTestId('global-attribute-name').map((cell) => cell.textContent);
+            expect(names).toEqual(['Bravo', 'Charlie', 'Delta', 'Echo']);
+        });
+
+        it('does not show the empty state when only non-template fields exist', async () => {
+            mockScopedFields({user: [makeField({id: 'u1', name: 'user_field', object_type: 'user'})]});
+
+            renderWithContext(<GlobalAttributesTable/>, getChannelScopeState());
+
+            expect(await screen.findByText('user_field')).toBeInTheDocument();
+            expect(screen.queryByTestId('global-attributes-empty')).not.toBeInTheDocument();
+        });
+
+        it('keeps the listing usable when one resource-scope fetch fails, dropping only that scope', async () => {
+            const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+            const cachedChannelField = makeField({id: 'c1', name: 'cached_channel_field', object_type: 'channel'});
+            getPropertyFields.mockImplementation((_group, objectType, _targetType, _targetId, opts) => {
+                if (opts?.cursorId) {
+                    return Promise.resolve([]);
+                }
+                if (objectType === 'channel') {
+                    return Promise.reject(new Error('boom'));
+                }
+                if (objectType === 'user') {
+                    return Promise.resolve([makeField({id: 'u1', name: 'user_field', object_type: 'user'})]);
+                }
+                return Promise.resolve([]);
+            });
+
+            const state = getChannelScopeState();
+            state.entities!.properties = {
+                groups: {
+                    byId: {[ACCESS_CONTROL_GROUP_UUID]: {id: ACCESS_CONTROL_GROUP_UUID, name: 'access_control'}},
+                    byName: {access_control: {id: ACCESS_CONTROL_GROUP_UUID, name: 'access_control'}},
+                },
+                fields: {
+                    byId: {c1: cachedChannelField},
+                    byObjectType: {
+                        channel: {[ACCESS_CONTROL_GROUP_UUID]: {c1: cachedChannelField}},
+                    },
+                },
+            };
+
+            renderWithContext(<GlobalAttributesTable/>, state);
+
+            expect(await screen.findByText('user_field')).toBeInTheDocument();
+            expect(screen.queryByTestId('global-attributes-error')).not.toBeInTheDocument();
+
+            // A rejected fetch leaves that scope's cached fields in Redux; showing
+            // them would be stale.
+            expect(screen.queryByText('cached_channel_field')).not.toBeInTheDocument();
+
+            consoleSpy.mockRestore();
+        });
+
+        it('skips the channel scope below Enterprise Advanced, so a channel 501 cannot fail the page', async () => {
+            // The server 501s a channel-scoped access_control GET below Enterprise
+            // Advanced; fetching it here would reject the load and show the error
+            // state. getBaseState() has no Advanced license, so the channel scope
+            // must be skipped entirely -- the reject below must never be reached.
+            getPropertyFields.mockImplementation((_group, objectType) =>
+                (objectType === 'channel' ? Promise.reject(new Error('channel 501')) : Promise.resolve([])),
+            );
+
+            renderWithContext(<GlobalAttributesTable/>, getBaseState());
+
+            expect(await screen.findByTestId('global-attributes-empty')).toBeInTheDocument();
+            expect(screen.queryByTestId('global-attributes-error')).not.toBeInTheDocument();
+            expect(getPropertyFields.mock.calls.every((call) => call[1] !== 'channel')).toBe(true);
+        });
+
+        it('hides a cached channel field when channel attributes are disabled', async () => {
+            // Channel-header labels (and a prior visit while licensed) can leave a
+            // channel field in the store after this page has stopped fetching that
+            // scope.
+            const cachedChannel = makeField({id: 'c1', name: 'cached_channel_field', object_type: 'channel'});
+            const userField = makeField({id: 'u1', name: 'user_field', object_type: 'user'});
+            mockScopedFields({user: [userField]});
+
+            const state = getBaseState();
+            state.entities!.properties = {
+                groups: {
+                    byId: {[ACCESS_CONTROL_GROUP_UUID]: {id: ACCESS_CONTROL_GROUP_UUID, name: 'access_control'}},
+                    byName: {access_control: {id: ACCESS_CONTROL_GROUP_UUID, name: 'access_control'}},
+                },
+                fields: {
+                    byId: {c1: cachedChannel},
+                    byObjectType: {
+                        channel: {[ACCESS_CONTROL_GROUP_UUID]: {c1: cachedChannel}},
+                    },
+                },
+            };
+
+            renderWithContext(<GlobalAttributesTable/>, state);
+
+            expect(await screen.findByText('user_field')).toBeInTheDocument();
+            expect(screen.queryByText('cached_channel_field')).not.toBeInTheDocument();
+        });
     });
 
     it('renders the Applies-to column as an explicit placeholder when nothing is linked', async () => {
@@ -490,6 +655,7 @@ describe('GlobalAttributesTable', () => {
             ['select', 'Select'],
             ['multiselect', 'Multiselect'],
             ['rank', 'Ranked'],
+            ['graph', 'Hierarchical'],
         ])('renders the %s type with the %s label and a leading icon', async (type, label) => {
             getPropertyFields.mockResolvedValueOnce([makeField({type: type as PropertyField['type']})]).mockResolvedValue([]);
 
@@ -500,7 +666,7 @@ describe('GlobalAttributesTable', () => {
             expect(cell.querySelector('svg')).toBeInTheDocument();
         });
 
-        it('renders a defined fallback (not a blank cell) for a FieldType outside text/select/multiselect/rank', async () => {
+        it('renders a defined fallback (not a blank cell) for a FieldType outside text/select/multiselect/rank/graph', async () => {
             getPropertyFields.mockResolvedValueOnce([makeField({type: 'date'})]).mockResolvedValue([]);
 
             renderWithContext(<GlobalAttributesTable/>, getBaseState());
@@ -519,6 +685,7 @@ describe('GlobalAttributesTable', () => {
             ['select', ChevronDownCircleOutlineIcon],
             ['multiselect', FormatListBulletedIcon],
             ['rank', SortAscendingIcon],
+            ['graph', SitemapIcon],
             ['date', MenuVariantIcon],
         ])('maps the %s field type to the expected icon component', (type, icon) => {
             expect(getTypeIcon(type as PropertyField['type'])).toBe(icon);
@@ -565,16 +732,69 @@ describe('GlobalAttributesTable', () => {
             expect(screen.queryByText('1 options')).not.toBeInTheDocument();
         });
 
-        it('renders the option count (not "Free Text") for a graph field', async () => {
+        it('renders the option count for a graph field, not Free Text', async () => {
             getPropertyFields.mockResolvedValueOnce([makeField({
                 type: 'graph',
-                attrs: {options: [{id: 'o1', name: 'A'}, {id: 'o2', name: 'B'}]},
+                attrs: {
+                    options: [
+                        {id: 'o1', name: 'Root', parents: []},
+                        {id: 'o2', name: 'Child', parents: ['Root']},
+                    ],
+                },
             })]).mockResolvedValue([]);
 
             renderWithContext(<GlobalAttributesTable/>, getBaseState());
 
             const cell = await screen.findByTestId('global-attribute-options');
             expect(cell).toHaveTextContent('2 options');
+            expect(cell).not.toHaveTextContent('Free Text');
+        });
+
+        it('renders an explicit zero-count for a graph field with no inline options, not Free Text', async () => {
+            getPropertyFields.mockResolvedValueOnce([makeField({
+                type: 'graph',
+                attrs: {options: []},
+            })]).mockResolvedValue([]);
+
+            renderWithContext(<GlobalAttributesTable/>, getBaseState());
+
+            const cell = await screen.findByTestId('global-attribute-options');
+            expect(cell).toHaveTextContent('0 options');
+            expect(cell).not.toHaveTextContent('Free Text');
+        });
+
+        it('uses options_count when options_omitted is set, never 0 options or Free Text', async () => {
+            getPropertyFields.mockResolvedValueOnce([makeField({
+                type: 'graph',
+                attrs: {
+                    options: [],
+                    options_omitted: true,
+                    options_count: 1500,
+                },
+            })]).mockResolvedValue([]);
+
+            renderWithContext(<GlobalAttributesTable/>, getBaseState());
+
+            const cell = await screen.findByTestId('global-attribute-options');
+
+            // ICU formats 1500 as 1,500; exact text so "0 options" is not a substring false-positive.
+            expect(cell.textContent).toBe('1,500 options');
+            expect(cell).not.toHaveTextContent('Free Text');
+        });
+
+        it('uses options_count when options_omitted and the options key is absent', async () => {
+            getPropertyFields.mockResolvedValueOnce([makeField({
+                type: 'graph',
+                attrs: {
+                    options_omitted: true,
+                    options_count: 1500,
+                },
+            })]).mockResolvedValue([]);
+
+            renderWithContext(<GlobalAttributesTable/>, getBaseState());
+
+            const cell = await screen.findByTestId('global-attribute-options');
+            expect(cell.textContent).toBe('1,500 options');
             expect(cell).not.toHaveTextContent('Free Text');
         });
 
@@ -785,6 +1005,20 @@ describe('GlobalAttributesTable', () => {
             expect(del).toHaveAttribute('aria-disabled', 'true');
             expect(del).toHaveTextContent('Plugin-managed');
         });
+
+        it('opens Edit for a graph field, same as any other managed type', async () => {
+            getPropertyFields.mockResolvedValueOnce([makeField({type: 'graph'})]).mockResolvedValue([]);
+
+            renderWithContext(<GlobalAttributesTable/>, getBaseState());
+
+            const trigger = await screen.findByTestId('global-attribute-actions-field-1');
+            await userEvent.click(trigger);
+
+            const edit = screen.getAllByRole('menuitem').find((el) => el.textContent?.includes('Edit attribute'));
+            expect(edit).toBeDefined();
+            expect(edit!).not.toHaveAttribute('aria-disabled', 'true');
+            expect(edit!).not.toHaveTextContent('Coming soon');
+        });
     });
 
     describe('Delete action', () => {
@@ -858,6 +1092,34 @@ describe('GlobalAttributesTable', () => {
 
             expect(deletePropertyField).not.toHaveBeenCalled();
             expect(screen.getByTestId('global-attribute-name')).toHaveTextContent('Department');
+        });
+
+        it('deletes a non-template field via its own object type scope', async () => {
+            deletePropertyField.mockResolvedValue({status: 'OK'});
+
+            const channelField = makeField({id: 'c1', name: 'channel_field', object_type: 'channel', attrs: {display_name: 'Channel Field'}});
+
+            getPropertyFields.mockImplementation((_group, objectType, _targetType, _targetId, opts) => {
+                if (opts?.cursorId) {
+                    return Promise.resolve([]);
+                }
+                return Promise.resolve(objectType === 'channel' ? [channelField] : []);
+            });
+
+            renderWithContext(
+                <div className='admin-console__wrapper'>
+                    <GlobalAttributesTable/>
+                    <ModalController/>
+                </div>,
+                getChannelScopeState(),
+            );
+
+            await openDeleteModal('c1');
+            await userEvent.click(await screen.findByRole('button', {name: /^delete$/i}));
+
+            await waitFor(() => {
+                expect(deletePropertyField).toHaveBeenCalledWith('access_control', 'channel', 'c1');
+            });
         });
 
         it('deletes via the access_control/template scope and drops the row on success', async () => {
@@ -1111,13 +1373,13 @@ describe('GlobalAttributesTable', () => {
     });
 
     describe('Classification Markings row', () => {
-        it('renders an open-in-new link and a menu carrying Edit when the field matches and the destination is reachable', async () => {
+        it('renders the subtitle, an open-in-new link and a menu carrying Edit when the field matches and the destination is reachable', async () => {
             getPropertyFields.mockResolvedValueOnce([makeClassificationField()]).mockResolvedValue([]);
 
             renderWithContext(<GlobalAttributesTable/>, getReachableState());
 
             expect(await screen.findByTestId('global-attribute-name')).toHaveTextContent('Classification');
-            expect(screen.queryByText('Definition is read-only')).not.toBeInTheDocument();
+            expect(await screen.findByTestId('global-attribute-classification-subtitle-field-1')).toHaveTextContent('Definition is read-only');
 
             const link = screen.getByTestId('global-attribute-classification-link-field-1');
             expect(link).toHaveAttribute('href', CLASSIFICATIONS_MARKINGS_ADMIN_URL);
