@@ -58,7 +58,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     && CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" go build \
          -buildvcs=false -trimpath \
          -tags 'production' \
-         -ldflags "-X github.com/mattermost/mattermost/server/public/model.BuildNumber=${BUILD_NUMBER} -X github.com/mattermost/mattermost/server/public/model.BuildDate=${BUILD_DATE} -X github.com/mattermost/mattermost/server/public/model.BuildHash=${BUILD_HASH} -X github.com/mattermost/mattermost/server/public/model.BuildHashEnterprise=none -X github.com/mattermost/mattermost/server/public/model.BuildEnterpriseReady=false" \
+         -ldflags "-s -w -X github.com/mattermost/mattermost/server/public/model.BuildNumber=${BUILD_NUMBER} -X github.com/mattermost/mattermost/server/public/model.BuildDate=${BUILD_DATE} -X github.com/mattermost/mattermost/server/public/model.BuildHash=${BUILD_HASH} -X github.com/mattermost/mattermost/server/public/model.BuildHashEnterprise=none -X github.com/mattermost/mattermost/server/public/model.BuildEnterpriseReady=false" \
          -o "bin/${TARGETOS}_${TARGETARCH}" \
          ./cmd/mattermost ./cmd/mmctl
 
