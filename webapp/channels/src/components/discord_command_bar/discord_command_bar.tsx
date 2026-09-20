@@ -33,7 +33,11 @@ export const extractSlotsFromHint = (hint: string): CommandSlot[] => {
 
     for (const rawToken of tokens) {
         const isRequired = rawToken.startsWith('<') && rawToken.endsWith('>');
-        const clean = rawToken.replace(/^[[<]|[]>]|\*$/g, '').trim();
+        let clean = rawToken.trim();
+        if ((clean.startsWith('[') && clean.endsWith(']')) || (clean.startsWith('<') && clean.endsWith('>'))) {
+            clean = clean.slice(1, -1).trim();
+        }
+        clean = clean.replace(/\*$/, '').trim();
 
         if (clean.includes(':')) {
             const [paramName, typeOrChoices] = clean.split(':').map((s) => s.trim());
@@ -89,7 +93,7 @@ export const extractSlotsFromHint = (hint: string): CommandSlot[] => {
                 value: '',
             });
         } else if (clean.startsWith('@')) {
-            const name = clean.replace(/^@/, '').replace(/^\[|\]$/g, '');
+            const name = clean.slice(1).replace(/^[<\[]+|[>\]]+$/g, '').trim();
             slots.push({
                 name: name || 'user',
                 label: name || 'user',
@@ -98,7 +102,7 @@ export const extractSlotsFromHint = (hint: string): CommandSlot[] => {
                 value: '',
             });
         } else if (clean.startsWith('~')) {
-            const name = clean.replace(/^~/, '').replace(/^\[|\]$/g, '');
+            const name = clean.slice(1).replace(/^[<\[]+|[>\]]+$/g, '').trim();
             slots.push({
                 name: name || 'channel',
                 label: name || 'channel',
@@ -147,7 +151,8 @@ export const DiscordCommandBar: React.FC<DiscordCommandBarProps> = ({
         let cmd = `/${trigger}`;
         for (const slot of currentSlots) {
             if (slot.value && slot.value.trim()) {
-                if (slot.name === 'args') {
+                const isPositional = ['args', 'text', 'message', 'words', '文字', '内容'].includes(slot.name.toLowerCase());
+                if (isPositional) {
                     cmd += ` ${slot.value.trim()}`;
                 } else if (slot.type === 'boolean' && slot.value === 'true') {
                     cmd += ` --${slot.name}`;
@@ -279,7 +284,7 @@ export const DiscordCommandBar: React.FC<DiscordCommandBarProps> = ({
                             onClick={() => setActiveSlotIndex(index)}
                         >
                             <span className='discord-command-bar__slot-label'>
-                                {slot.label}:
+                                {slot.label}
                                 {slot.required && <span className='discord-command-bar__req-star'>*</span>}
                             </span>
                             <input
