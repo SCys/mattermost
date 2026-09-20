@@ -14,6 +14,8 @@ import type {UserProfile} from '@mattermost/types/users';
 import type {ActionResult} from 'mattermost-redux/types/actions';
 
 import AutosizeTextarea from 'components/autosize_textarea';
+import DiscordCommandBar, {extractSlotsFromHint} from 'components/discord_command_bar';
+import type {CommandSlot} from 'components/discord_command_bar';
 import PostMarkdown from 'components/post_markdown';
 import AtMentionProvider from 'components/suggestion/at_mention_provider';
 import ChannelMentionProvider from 'components/suggestion/channel_mention_provider';
@@ -76,10 +78,19 @@ export type Props = {
     hasError?: boolean;
 };
 
+interface State {
+    discordCommand: {
+        active: boolean;
+        trigger: string;
+        description?: string;
+        slots: CommandSlot[];
+    } | null;
+}
+
 const VISIBLE = {visibility: 'visible'} as const;
 const HIDDEN = {visibility: 'hidden'} as const;
 
-export default class Textbox extends React.PureComponent<Props> {
+export default class Textbox extends React.PureComponent<Props, State> {
     private readonly suggestionProviders: Provider[];
     private readonly wrapper: React.RefObject<HTMLDivElement | null>;
     private readonly message: React.RefObject<SuggestionBoxComponent | null>;
@@ -93,6 +104,10 @@ export default class Textbox extends React.PureComponent<Props> {
 
     constructor(props: Props) {
         super(props);
+
+        this.state = {
+            discordCommand: null,
+        };
 
         this.suggestionProviders = [];
 
@@ -209,8 +224,76 @@ export default class Textbox extends React.PureComponent<Props> {
         if (!prevProps.preview && this.props.preview) {
             this.preview.current?.focus();
         }
+        if (prevProps.value && !this.props.value && this.state.discordCommand?.active) {
+            this.setState({discordCommand: null});
+        }
         this.updateSuggestions(prevProps);
     }
+
+    handleItemSelected = (item: any) => {
+        if (item && item.Suggestion && typeof item.Suggestion === 'string' && item.Suggestion.startsWith('/')) {
+            const trigger = item.Suggestion.substring(1).trim();
+            const slots = extractSlotsFromHint(item.Hint || '');
+            this.setState({
+                discordCommand: {
+                    active: true,
+                    trigger,
+                    description: item.Description,
+                    slots,
+                },
+            });
+        }
+    };
+
+    handleDiscordCommandValueChange = (fullCommandText: string) => {
+        const fakeEvent = {
+            target: {
+                id: this.props.id,
+                value: fullCommandText,
+            },
+        } as unknown as React.ChangeEvent<TextboxElement>;
+        this.props.onChange(fakeEvent);
+    };
+
+    handleDiscordCommandCancel = () => {
+        this.setState({discordCommand: null});
+        const fakeEvent = {
+            target: {
+                id: this.props.id,
+                value: '',
+            },
+        } as unknown as React.ChangeEvent<TextboxElement>;
+        this.props.onChange(fakeEvent);
+    };
+
+    handleDiscordCommandSubmit = (fullCommandText: string) => {
+        const fakeChangeEvent = {
+            target: {
+                id: this.props.id,
+                value: fullCommandText,
+            },
+        } as unknown as React.ChangeEvent<TextboxElement>;
+        this.props.onChange(fakeChangeEvent);
+
+        const fakeKeyPressEvent = {
+            key: 'Enter',
+            keyCode: 13,
+            which: 13,
+            shiftKey: false,
+            ctrlKey: false,
+            altKey: false,
+            metaKey: false,
+            preventDefault: () => {},
+            stopPropagation: () => {},
+            target: {
+                id: this.props.id,
+                value: fullCommandText,
+            },
+        } as unknown as React.KeyboardEvent<TextboxElement>;
+        this.props.onKeyPress(fakeKeyPressEvent);
+
+        this.setState({discordCommand: null});
+    };
 
     checkMessageLength = (message: string) => {
         if (this.props.handlePostError) {
@@ -294,6 +377,8 @@ export default class Textbox extends React.PureComponent<Props> {
             textboxClassName += ' textarea--has-errors';
         }
 
+        const isDiscordCommandActive = Boolean(this.state.discordCommand?.active && !this.props.preview);
+
         return (
             <div
                 ref={this.wrapper}
@@ -313,34 +398,46 @@ export default class Textbox extends React.PureComponent<Props> {
                         imageProps={{hideUtilities: true}}
                     />
                 </div>
-                <SuggestionBox
-                    ref={this.message}
-                    id={this.props.id}
-                    className={textboxClassName}
-                    spellCheck='true'
-                    placeholder={this.props.createMessage}
-                    onChange={this.handleChange}
-                    onKeyPress={this.handleKeyPress}
-                    onKeyDown={this.handleKeyDown}
-                    onMouseUp={this.handleMouseUp}
-                    onKeyUp={this.handleKeyUp}
-                    onCompositionUpdate={this.props.onCompositionUpdate}
-                    onBlur={this.handleBlur}
-                    onFocus={this.props.onFocus}
-                    onHeightChange={this.props.onHeightChange}
-                    onWidthChange={this.props.onWidthChange}
-                    onPaste={this.props.onPaste}
-                    style={this.getStyle()}
-                    inputComponent={this.props.inputComponent}
-                    listComponent={this.props.suggestionList}
-                    listPosition={this.props.suggestionListPosition}
-                    providers={this.suggestionProviders}
-                    value={this.props.value}
-                    disabled={this.props.disabled}
-                    contextId={this.props.channelId}
-                    openWhenEmpty={this.props.openWhenEmpty}
-                    alignWithTextbox={this.props.alignWithTextbox}
-                />
+                {isDiscordCommandActive && this.state.discordCommand ? (
+                    <DiscordCommandBar
+                        trigger={this.state.discordCommand.trigger}
+                        description={this.state.discordCommand.description}
+                        initialSlots={this.state.discordCommand.slots}
+                        onCancel={this.handleDiscordCommandCancel}
+                        onSubmit={this.handleDiscordCommandSubmit}
+                        onValueChange={this.handleDiscordCommandValueChange}
+                    />
+                ) : (
+                    <SuggestionBox
+                        ref={this.message}
+                        id={this.props.id}
+                        className={textboxClassName}
+                        spellCheck='true'
+                        placeholder={this.props.createMessage}
+                        onChange={this.handleChange}
+                        onKeyPress={this.handleKeyPress}
+                        onKeyDown={this.handleKeyDown}
+                        onMouseUp={this.handleMouseUp}
+                        onKeyUp={this.handleKeyUp}
+                        onCompositionUpdate={this.props.onCompositionUpdate}
+                        onBlur={this.handleBlur}
+                        onFocus={this.props.onFocus}
+                        onHeightChange={this.props.onHeightChange}
+                        onWidthChange={this.props.onWidthChange}
+                        onPaste={this.props.onPaste}
+                        onItemSelected={this.handleItemSelected}
+                        style={this.getStyle()}
+                        inputComponent={this.props.inputComponent}
+                        listComponent={this.props.suggestionList}
+                        listPosition={this.props.suggestionListPosition}
+                        providers={this.suggestionProviders}
+                        value={this.props.value}
+                        disabled={this.props.disabled}
+                        contextId={this.props.channelId}
+                        openWhenEmpty={this.props.openWhenEmpty}
+                        alignWithTextbox={this.props.alignWithTextbox}
+                    />
+                )}
             </div>
         );
     }

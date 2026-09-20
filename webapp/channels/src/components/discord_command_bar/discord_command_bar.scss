@@ -1,0 +1,187 @@
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+
+.discord-command-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    min-height: 44px;
+    width: 100%;
+    background-color: var(--center-channel-bg, #ffffff);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 14px;
+    box-sizing: border-box;
+    position: relative;
+    border: 1px solid rgba(var(--button-bg-rgb, 28, 88, 217), 0.4);
+    box-shadow: 0 0 0 1px rgba(var(--button-bg-rgb, 28, 88, 217), 0.15);
+
+    &__command-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(var(--button-bg-rgb, 28, 88, 217), 0.12);
+        color: var(--button-bg, #1c58d9);
+        border: 1px solid rgba(var(--button-bg-rgb, 28, 88, 217), 0.3);
+        border-radius: 6px;
+        padding: 3px 8px;
+        font-weight: 600;
+        font-size: 13px;
+        user-select: none;
+
+        .discord-command-bar__icon {
+            font-size: 14px;
+            font-weight: bold;
+            opacity: 0.85;
+        }
+
+        .discord-command-bar__trigger {
+            letter-spacing: 0.2px;
+        }
+
+        .discord-command-bar__close-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            cursor: pointer;
+            opacity: 0.6;
+            margin-left: 2px;
+            font-size: 11px;
+            line-height: 1;
+            transition: opacity 0.15s ease, background-color 0.15s ease;
+
+            &:hover {
+                opacity: 1;
+                background-color: rgba(var(--button-bg-rgb, 28, 88, 217), 0.25);
+            }
+        }
+    }
+
+    &__slots-container {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        flex: 1;
+    }
+
+    &__slot {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 6px;
+        padding: 2px 8px;
+        font-size: 13px;
+        background: rgba(var(--center-channel-color-rgb, 61, 60, 64), 0.06);
+        border: 1px solid rgba(var(--center-channel-color-rgb, 61, 60, 64), 0.15);
+        color: var(--center-channel-color, #3d3c40);
+        cursor: text;
+        transition: all 0.15s ease;
+        position: relative;
+
+        &--required {
+            border-color: rgba(var(--button-bg-rgb, 28, 88, 217), 0.35);
+        }
+
+        &--active {
+            border-color: var(--button-bg, #1c58d9);
+            box-shadow: 0 0 0 2px rgba(var(--button-bg-rgb, 28, 88, 217), 0.25);
+            background: var(--center-channel-bg, #ffffff);
+        }
+
+        &--filled {
+            background: rgba(var(--center-channel-color-rgb, 61, 60, 64), 0.09);
+        }
+
+        .discord-command-bar__slot-label {
+            font-weight: 500;
+            color: rgba(var(--center-channel-color-rgb, 61, 60, 64), 0.7);
+            margin-right: 4px;
+            user-select: none;
+
+            .discord-command-bar__req-star {
+                color: var(--error-text, #d24b4e);
+                margin-left: 2px;
+                font-weight: bold;
+            }
+        }
+
+        .discord-command-bar__slot-input {
+            border: none;
+            background: transparent;
+            padding: 0;
+            margin: 0;
+            font-size: 13px;
+            color: var(--center-channel-color, #3d3c40);
+            outline: none;
+            min-width: 32px;
+            width: auto;
+            font-family: inherit;
+
+            &::placeholder {
+                color: rgba(var(--center-channel-color-rgb, 61, 60, 64), 0.4);
+            }
+        }
+    }
+
+    &__dropdown {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        z-index: 1000;
+        min-width: 180px;
+        background: var(--center-channel-bg, #ffffff);
+        border: 1px solid rgba(var(--center-channel-color-rgb, 61, 60, 64), 0.16);
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        padding: 4px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        max-height: 220px;
+        overflow-y: auto;
+
+        .discord-command-bar__dropdown-item {
+            padding: 6px 10px;
+            font-size: 13px;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: var(--center-channel-color, #3d3c40);
+
+            &--active, &:hover {
+                background: rgba(var(--button-bg-rgb, 28, 88, 217), 0.1);
+                color: var(--button-bg, #1c58d9);
+            }
+
+            .discord-command-bar__dropdown-value {
+                font-size: 11px;
+                opacity: 0.6;
+            }
+        }
+    }
+
+    &__helper-hint {
+        font-size: 12px;
+        color: rgba(var(--center-channel-color-rgb, 61, 60, 64), 0.55);
+        margin-left: auto;
+        user-select: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        kbd {
+            background: rgba(var(--center-channel-color-rgb, 61, 60, 64), 0.1);
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-family: inherit;
+        }
+    }
+}
