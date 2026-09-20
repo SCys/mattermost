@@ -49,6 +49,12 @@ const buildTimestamp = Date.now();
 
 var config = {
     entry: ['./src/root.tsx'],
+    cache: {
+        type: 'filesystem',
+        buildDependencies: {
+            config: [__filename],
+        },
+    },
     output: {
         publicPath,
         filename: '[name].[contenthash].js',
