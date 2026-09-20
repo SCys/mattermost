@@ -4,8 +4,17 @@
 package model
 
 import (
+	"strings"
+
 	"github.com/mattermost/mattermost/server/public/shared/i18n"
 )
+
+type CommandOptionArg struct {
+	Name     string              `json:"name"`
+	Type     AutocompleteArgType `json:"type"`
+	Value    any                 `json:"value"`
+	RawValue string              `json:"raw_value,omitempty"`
+}
 
 type CommandArgs struct {
 	UserId          string             `json:"user_id"`
@@ -20,6 +29,10 @@ type CommandArgs struct {
 	T               i18n.TranslateFunc `json:"-"`
 	UserMentions    UserMentionMap     `json:"-"`
 	ChannelMentions ChannelMentionMap  `json:"-"`
+	// Options contains structured parsed command arguments (Discord/Slack level)
+	Options         []CommandOptionArg `json:"options,omitempty"`
+	// Parameters provides key-value dictionary access to parsed option values
+	Parameters      map[string]any     `json:"parameters,omitempty"`
 }
 
 func (o *CommandArgs) Auditable() map[string]any {
@@ -55,3 +68,34 @@ func (o *CommandArgs) AddChannelMention(channelName, channelId string) {
 
 	o.ChannelMentions[channelName] = channelId
 }
+
+// GetOption returns the option by name (case-insensitive), or nil if not found
+func (o *CommandArgs) GetOption(name string) *CommandOptionArg {
+	for i := range o.Options {
+		if strings.EqualFold(o.Options[i].Name, name) {
+			return &o.Options[i]
+		}
+	}
+	return nil
+}
+
+// GetStringOption returns string value of the option or defaultVal if not found or not string
+func (o *CommandArgs) GetStringOption(name, defaultVal string) string {
+	if opt := o.GetOption(name); opt != nil {
+		if str, ok := opt.Value.(string); ok {
+			return str
+		}
+	}
+	return defaultVal
+}
+
+// GetBoolOption returns bool value of the option or defaultVal if not found or not bool
+func (o *CommandArgs) GetBoolOption(name string, defaultVal bool) bool {
+	if opt := o.GetOption(name); opt != nil {
+		if b, ok := opt.Value.(bool); ok {
+			return b
+		}
+	}
+	return defaultVal
+}
+

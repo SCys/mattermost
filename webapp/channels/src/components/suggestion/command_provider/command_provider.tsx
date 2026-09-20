@@ -33,6 +33,50 @@ const EXECUTE_CURRENT_COMMAND_ITEM_ID = Constants.Integrations.EXECUTE_CURRENT_C
 const OPEN_COMMAND_IN_MODAL_ITEM_ID = Constants.Integrations.OPEN_COMMAND_IN_MODAL_ITEM_ID;
 const COMMAND_SUGGESTION_ERROR = Constants.Integrations.COMMAND_SUGGESTION_ERROR;
 
+const renderRichHint = (hint: string) => {
+    if (!hint || !hint.trim()) {
+        return null;
+    }
+
+    const parts = hint.split(/(\[[^\]]+\]|<[^>]+>|--[a-zA-Z0-9_-]+)/g);
+
+    return (
+        <span className='slash-command__hints'>
+            {parts.map((part, index) => {
+                if (!part) {
+                    return null;
+                }
+                const isToken = (part.startsWith('[') && part.endsWith(']')) ||
+                                (part.startsWith('<') && part.endsWith('>')) ||
+                                part.startsWith('--');
+                if (isToken) {
+                    const isRequired = part.startsWith('<') && part.endsWith('>');
+                    return (
+                        <span
+                            key={index}
+                            className={`slash-command__hint-badge ${isRequired ? 'slash-command__hint-badge--required' : ''}`}
+                            style={{
+                                display: 'inline-block',
+                                padding: '1px 5px',
+                                margin: '0 2px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                borderRadius: '4px',
+                                backgroundColor: isRequired ? 'rgba(var(--button-bg-rgb, 28, 88, 217), 0.15)' : 'rgba(var(--center-channel-color-rgb, 61, 60, 64), 0.08)',
+                                color: isRequired ? 'var(--button-bg, #1c58d9)' : 'inherit',
+                                border: '1px solid ' + (isRequired ? 'rgba(var(--button-bg-rgb, 28, 88, 217), 0.3)' : 'rgba(var(--center-channel-color-rgb, 61, 60, 64), 0.15)'),
+                            }}
+                        >
+                            {part}
+                        </span>
+                    );
+                }
+                return <span key={index}>{part}</span>;
+            })}
+        </span>
+    );
+};
+
 const CommandSuggestion = React.forwardRef<HTMLLIElement, SuggestionProps<AutocompleteSuggestion>>((props, ref) => {
     const {id, item} = props;
 
@@ -85,7 +129,9 @@ const CommandSuggestion = React.forwardRef<HTMLLIElement, SuggestionProps<Autoco
                     id={ids.label}
                     className='slash-command__title'
                 >
-                    {item.Suggestion.substring(1) + ' ' + item.Hint}
+                    <span className='slash-command__trigger'>{item.Suggestion.substring(1)}</span>
+                    {item.Hint ? ' ' : ''}
+                    {item.Hint ? renderRichHint(item.Hint) : null}
                 </div>
                 <div
                     id={ids.description}

@@ -5,11 +5,14 @@ package model
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"path"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/pkg/errors"
 )
@@ -22,6 +25,14 @@ const (
 	AutocompleteArgTypeText        AutocompleteArgType = "TextInput"
 	AutocompleteArgTypeStaticList  AutocompleteArgType = "StaticList"
 	AutocompleteArgTypeDynamicList AutocompleteArgType = "DynamicList"
+
+	// Rich argument types (Discord/Slack level)
+	AutocompleteArgTypeInteger AutocompleteArgType = "Integer"
+	AutocompleteArgTypeNumber  AutocompleteArgType = "Number"
+	AutocompleteArgTypeBoolean AutocompleteArgType = "Boolean"
+	AutocompleteArgTypeUser    AutocompleteArgType = "User"
+	AutocompleteArgTypeChannel AutocompleteArgType = "Channel"
+	AutocompleteArgTypeChoice  AutocompleteArgType = "Choice"
 )
 
 // AutocompleteData describes slash command autocomplete information.
@@ -82,6 +93,17 @@ type AutocompleteStaticListArg struct {
 // AutocompleteDynamicListArg is used when user wants to download possible argument list from the URL.
 type AutocompleteDynamicListArg struct {
 	FetchURL string
+}
+
+// AutocompleteChoice describes a structured choice option (label and value, Discord style).
+type AutocompleteChoice struct {
+	Name  string `json:"name"`
+	Value any    `json:"value"`
+}
+
+// AutocompleteChoiceArg is used for Choice arguments with a static list of selectable choices.
+type AutocompleteChoiceArg struct {
+	Choices []AutocompleteChoice `json:"choices"`
 }
 
 // AutocompleteSuggestion describes a single suggestion item sent to the front-end
@@ -169,6 +191,86 @@ func (ad *AutocompleteData) AddNamedDynamicListArgument(name, helpText, url stri
 		Data:     &AutocompleteDynamicListArg{FetchURL: url},
 	}
 	ad.Arguments = append(ad.Arguments, &argument)
+}
+
+// AddUserArgument adds positional AutocompleteArgTypeUser argument to the command.
+func (ad *AutocompleteData) AddUserArgument(helpText, hint string, required bool) {
+	ad.AddNamedUserArgument("", helpText, hint, required)
+}
+
+// AddNamedUserArgument adds named AutocompleteArgTypeUser argument to the command.
+func (ad *AutocompleteData) AddNamedUserArgument(name, helpText, hint string, required bool) {
+	ad.Arguments = append(ad.Arguments, &AutocompleteArg{
+		Name:     name,
+		HelpText: helpText,
+		Type:     AutocompleteArgTypeUser,
+		Required: required,
+		Data:     &AutocompleteTextArg{Hint: hint},
+	})
+}
+
+// AddChannelArgument adds positional AutocompleteArgTypeChannel argument to the command.
+func (ad *AutocompleteData) AddChannelArgument(helpText, hint string, required bool) {
+	ad.AddNamedChannelArgument("", helpText, hint, required)
+}
+
+// AddNamedChannelArgument adds named AutocompleteArgTypeChannel argument to the command.
+func (ad *AutocompleteData) AddNamedChannelArgument(name, helpText, hint string, required bool) {
+	ad.Arguments = append(ad.Arguments, &AutocompleteArg{
+		Name:     name,
+		HelpText: helpText,
+		Type:     AutocompleteArgTypeChannel,
+		Required: required,
+		Data:     &AutocompleteTextArg{Hint: hint},
+	})
+}
+
+// AddBooleanArgument adds positional AutocompleteArgTypeBoolean argument to the command.
+func (ad *AutocompleteData) AddBooleanArgument(helpText string, required bool) {
+	ad.AddNamedBooleanArgument("", helpText, required)
+}
+
+// AddNamedBooleanArgument adds named AutocompleteArgTypeBoolean argument to the command.
+func (ad *AutocompleteData) AddNamedBooleanArgument(name, helpText string, required bool) {
+	ad.Arguments = append(ad.Arguments, &AutocompleteArg{
+		Name:     name,
+		HelpText: helpText,
+		Type:     AutocompleteArgTypeBoolean,
+		Required: required,
+		Data:     nil,
+	})
+}
+
+// AddIntegerArgument adds positional AutocompleteArgTypeInteger argument to the command.
+func (ad *AutocompleteData) AddIntegerArgument(helpText, hint string, required bool) {
+	ad.AddNamedIntegerArgument("", helpText, hint, required)
+}
+
+// AddNamedIntegerArgument adds named AutocompleteArgTypeInteger argument to the command.
+func (ad *AutocompleteData) AddNamedIntegerArgument(name, helpText, hint string, required bool) {
+	ad.Arguments = append(ad.Arguments, &AutocompleteArg{
+		Name:     name,
+		HelpText: helpText,
+		Type:     AutocompleteArgTypeInteger,
+		Required: required,
+		Data:     &AutocompleteTextArg{Hint: hint},
+	})
+}
+
+// AddChoiceArgument adds positional AutocompleteArgTypeChoice argument to the command.
+func (ad *AutocompleteData) AddChoiceArgument(helpText string, required bool, choices []AutocompleteChoice) {
+	ad.AddNamedChoiceArgument("", helpText, required, choices)
+}
+
+// AddNamedChoiceArgument adds named AutocompleteArgTypeChoice argument to the command.
+func (ad *AutocompleteData) AddNamedChoiceArgument(name, helpText string, required bool, choices []AutocompleteChoice) {
+	ad.Arguments = append(ad.Arguments, &AutocompleteArg{
+		Name:     name,
+		HelpText: helpText,
+		Type:     AutocompleteArgTypeChoice,
+		Required: required,
+		Data:     &AutocompleteChoiceArg{Choices: choices},
+	})
 }
 
 // Equals method checks if command is the same.
@@ -278,6 +380,11 @@ func (ad *AutocompleteData) IsValid() error {
 				if arg.Name == "" && !arg.Required {
 					return errors.New("Positional argument can not be optional")
 				}
+			} else if arg.Type == AutocompleteArgTypeChoice {
+				choiceArg, ok := arg.Data.(*AutocompleteChoiceArg)
+				if !ok || len(choiceArg.Choices) == 0 {
+					return errors.New("Choice argument must have non-empty Choices")
+				}
 			}
 		}
 	}
@@ -331,7 +438,7 @@ func (a *AutocompleteArg) UnmarshalJSON(b []byte) error {
 	}
 
 	data, ok := arg["Data"]
-	if !ok {
+	if !ok && a.Type != AutocompleteArgTypeBoolean {
 		return errors.Errorf("No field Data in the argument %s", string(b))
 	}
 
@@ -396,6 +503,223 @@ func (a *AutocompleteArg) UnmarshalJSON(b []byte) error {
 			return errors.Errorf("No field FetchURL in the DynamicList's argument %s", string(b))
 		}
 		a.Data = &AutocompleteDynamicListArg{FetchURL: url}
+	} else if a.Type == AutocompleteArgTypeChoice {
+		m, ok := data.(map[string]any)
+		if !ok {
+			return errors.Errorf("Wrong type in the Choice argument %s", string(b))
+		}
+		rawChoices, ok := m["Choices"].([]any)
+		if !ok {
+			return errors.Errorf("No field Choices in the Choice argument %s", string(b))
+		}
+		choices := make([]AutocompleteChoice, 0, len(rawChoices))
+		for _, c := range rawChoices {
+			cm, ok := c.(map[string]any)
+			if !ok {
+				continue
+			}
+			name, _ := cm["name"].(string)
+			if name == "" {
+				name, _ = cm["Name"].(string)
+			}
+			val := cm["value"]
+			if val == nil {
+				val = cm["Value"]
+			}
+			choices = append(choices, AutocompleteChoice{Name: name, Value: val})
+		}
+		a.Data = &AutocompleteChoiceArg{Choices: choices}
+	} else if a.Type == AutocompleteArgTypeUser || a.Type == AutocompleteArgTypeChannel || a.Type == AutocompleteArgTypeInteger || a.Type == AutocompleteArgTypeNumber {
+		if m, ok := data.(map[string]any); ok {
+			hint, _ := m["Hint"].(string)
+			pattern, _ := m["Pattern"].(string)
+			a.Data = &AutocompleteTextArg{Hint: hint, Pattern: pattern}
+		}
+	} else if a.Type == AutocompleteArgTypeBoolean {
+		a.Data = nil
 	}
 	return nil
+}
+
+// TokenizeCommandLine splits a raw command line into tokens respecting single and double quotes.
+func TokenizeCommandLine(cmd string) []string {
+	var tokens []string
+	var current strings.Builder
+	inQuote := false
+	quoteChar := rune(0)
+
+	for _, r := range cmd {
+		if inQuote {
+			if r == quoteChar {
+				inQuote = false
+			} else {
+				current.WriteRune(r)
+			}
+		} else {
+			if r == '"' || r == '\'' {
+				inQuote = true
+				quoteChar = r
+			} else if unicode.IsSpace(r) {
+				if current.Len() > 0 {
+					tokens = append(tokens, current.String())
+					current.Reset()
+				}
+			} else {
+				current.WriteRune(r)
+			}
+		}
+	}
+	if current.Len() > 0 {
+		tokens = append(tokens, current.String())
+	}
+	return tokens
+}
+
+func convertOptionValue(argType AutocompleteArgType, raw string, data any) (any, error) {
+	switch argType {
+	case AutocompleteArgTypeBoolean:
+		if strings.EqualFold(raw, "true") || raw == "1" || strings.EqualFold(raw, "yes") || strings.EqualFold(raw, "y") {
+			return true, nil
+		} else if strings.EqualFold(raw, "false") || raw == "0" || strings.EqualFold(raw, "no") || strings.EqualFold(raw, "n") {
+			return false, nil
+		}
+		return false, errors.Errorf("expected boolean value (true/false), got '%s'", raw)
+	case AutocompleteArgTypeInteger:
+		v, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return nil, errors.Errorf("expected integer value, got '%s'", raw)
+		}
+		return v, nil
+	case AutocompleteArgTypeNumber:
+		v, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return nil, errors.Errorf("expected number value, got '%s'", raw)
+		}
+		return v, nil
+	case AutocompleteArgTypeUser:
+		return strings.TrimPrefix(raw, "@"), nil
+	case AutocompleteArgTypeChannel:
+		return strings.TrimPrefix(raw, "~"), nil
+	case AutocompleteArgTypeChoice:
+		if choiceArg, ok := data.(*AutocompleteChoiceArg); ok && choiceArg != nil {
+			for _, choice := range choiceArg.Choices {
+				if strings.EqualFold(choice.Name, raw) || strings.EqualFold(fmt.Sprintf("%v", choice.Value), raw) {
+					return choice.Value, nil
+				}
+			}
+		}
+		return raw, nil
+	default:
+		return raw, nil
+	}
+}
+
+// ParseArguments parses a raw arguments string according to the AutocompleteData definition.
+func (ad *AutocompleteData) ParseArguments(rawArgs string) ([]CommandOptionArg, map[string]any, error) {
+	if ad == nil || len(ad.Arguments) == 0 {
+		return nil, nil, nil
+	}
+
+	tokens := TokenizeCommandLine(strings.TrimSpace(rawArgs))
+	options := make([]CommandOptionArg, 0, len(ad.Arguments))
+	params := make(map[string]any)
+
+	isNamed := false
+	for _, arg := range ad.Arguments {
+		if arg.Name != "" {
+			isNamed = true
+			break
+		}
+	}
+
+	if isNamed {
+		argMap := make(map[string]*AutocompleteArg)
+		for _, arg := range ad.Arguments {
+			argMap[strings.ToLower(arg.Name)] = arg
+		}
+
+		for i := 0; i < len(tokens); i++ {
+			token := tokens[i]
+			if strings.HasPrefix(token, "--") {
+				flagName := strings.TrimPrefix(token, "--")
+				var flagValue string
+				hasExplicitValue := false
+
+				if eqIdx := strings.Index(flagName, "="); eqIdx != -1 {
+					flagValue = flagName[eqIdx+1:]
+					flagName = flagName[:eqIdx]
+					hasExplicitValue = true
+				}
+
+				def, ok := argMap[strings.ToLower(flagName)]
+				if !ok {
+					continue
+				}
+
+				if def.Type == AutocompleteArgTypeBoolean && !hasExplicitValue {
+					if i+1 < len(tokens) && (strings.EqualFold(tokens[i+1], "true") || strings.EqualFold(tokens[i+1], "false")) {
+						flagValue = tokens[i+1]
+						i++
+					} else {
+						flagValue = "true"
+					}
+				} else if !hasExplicitValue {
+					if i+1 < len(tokens) {
+						flagValue = tokens[i+1]
+						i++
+					}
+				}
+
+				val, err := convertOptionValue(def.Type, flagValue, def.Data)
+				if err != nil {
+					return nil, nil, errors.Wrapf(err, "invalid value for parameter '--%s'", def.Name)
+				}
+
+				opt := CommandOptionArg{
+					Name:     def.Name,
+					Type:     def.Type,
+					Value:    val,
+					RawValue: flagValue,
+				}
+				options = append(options, opt)
+				params[def.Name] = val
+			}
+		}
+
+		for _, def := range ad.Arguments {
+			if def.Required {
+				if _, present := params[def.Name]; !present {
+					return nil, nil, errors.Errorf("missing required parameter: '--%s'", def.Name)
+				}
+			}
+		}
+	} else {
+		tokenIdx := 0
+		for _, def := range ad.Arguments {
+			if tokenIdx < len(tokens) {
+				rawVal := tokens[tokenIdx]
+				tokenIdx++
+
+				val, err := convertOptionValue(def.Type, rawVal, def.Data)
+				if err != nil {
+					return nil, nil, errors.Wrapf(err, "invalid argument at position %d", tokenIdx)
+				}
+
+				opt := CommandOptionArg{
+					Name:     def.Name,
+					Type:     def.Type,
+					Value:    val,
+					RawValue: rawVal,
+				}
+				options = append(options, opt)
+				if def.Name != "" {
+					params[def.Name] = val
+				}
+			} else if def.Required {
+				return nil, nil, errors.Errorf("missing required argument '%s'", def.HelpText)
+			}
+		}
+	}
+
+	return options, params, nil
 }

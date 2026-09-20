@@ -97,3 +97,40 @@ func TestUpdateRelativeURLsForPluginCommands(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, "http://localhost:8065/plugins/com.mattermost.demo-plugin/other/url", arg.FetchURL)
 }
+
+func TestRichSlashCommandArguments(t *testing.T) {
+	deployCmd := NewAutocompleteData("deploy", "", "Deploy service to an environment")
+	deployCmd.AddNamedChoiceArgument("env", "Deployment environment", true, []AutocompleteChoice{
+		{Name: "Production", Value: "prod"},
+		{Name: "Staging", Value: "staging"},
+	})
+	deployCmd.AddNamedBooleanArgument("dry-run", "Simulate without executing", false)
+	deployCmd.AddNamedIntegerArgument("replicas", "Number of replicas", "[count]", false)
+	deployCmd.AddNamedUserArgument("approver", "Approving user", "@username", false)
+
+	assert.NoError(t, deployCmd.IsValid())
+
+	// Test ParseArguments: valid input
+	rawInput := `--env prod --dry-run true --replicas 3 --approver @alice`
+	opts, params, err := deployCmd.ParseArguments(rawInput)
+	assert.NoError(t, err)
+	assert.Len(t, opts, 4)
+	assert.Equal(t, "prod", params["env"])
+	assert.Equal(t, true, params["dry-run"])
+	assert.Equal(t, int64(3), params["replicas"])
+	assert.Equal(t, "alice", params["approver"])
+
+	// Test ParseArguments: boolean flag shorthand
+	rawInput2 := `--env staging --dry-run`
+	opts2, params2, err := deployCmd.ParseArguments(rawInput2)
+	assert.NoError(t, err)
+	assert.Equal(t, "staging", params2["env"])
+	assert.Equal(t, true, params2["dry-run"])
+	_ = opts2
+
+	// Test ParseArguments: missing required parameter
+	rawInputMissing := `--dry-run true`
+	_, _, err = deployCmd.ParseArguments(rawInputMissing)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "missing required parameter: '--env'")
+}

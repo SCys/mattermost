@@ -16,6 +16,8 @@ import (
 const (
 	CommandResponseTypeInChannel = "in_channel"
 	CommandResponseTypeEphemeral = "ephemeral"
+	CommandResponseTypeDeferred  = "deferred"
+	CommandResponseTypeModal     = "modal"
 )
 
 type CommandResponse struct {

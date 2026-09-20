@@ -5,7 +5,9 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"maps"
 	"net/http"
@@ -122,6 +124,14 @@ func (a *App) CreateCommandPost(rctx request.CTX, post *model.Post, teamID strin
 			return nil, appErr
 		}
 		return createdPost, nil
+	}
+
+	if response.ResponseType == model.CommandResponseTypeDeferred {
+		if post.Message == "" {
+			post.Message = ":hourglass_flowing_sand: *Thinking...*"
+		}
+		a.SendEphemeralPost(rctx, post.UserId, post)
+		return post, nil
 	}
 
 	if (response.ResponseType == "" || response.ResponseType == model.CommandResponseTypeEphemeral) && (response.Text != "" || response.Attachments != nil) {
@@ -535,6 +545,29 @@ func (a *App) tryExecuteCustomCommand(rctx request.CTX, args *model.CommandArgs,
 
 	p.Set("trigger_id", args.TriggerId)
 	p.Set("root_id", args.RootId)
+
+	// Rich Slash Command: parse structured arguments if options aren't already provided
+	if len(args.Options) > 0 {
+		if optBytes, err := json.Marshal(args.Options); err == nil {
+			p.Set("options", string(optBytes))
+		}
+	} else if cmd.AutocompleteData != nil && len(cmd.AutocompleteData.Arguments) > 0 {
+		options, params, parseErr := cmd.AutocompleteData.ParseArguments(message)
+		if parseErr != nil {
+			return cmd, &model.CommandResponse{
+				ResponseType: model.CommandResponseTypeEphemeral,
+				Text:         fmt.Sprintf(":warning: Command parameter error: %s", parseErr.Error()),
+			}, nil
+		}
+		args.Options = options
+		args.Parameters = params
+
+		if len(options) > 0 {
+			if optBytes, err := json.Marshal(options); err == nil {
+				p.Set("options", string(optBytes))
+			}
+		}
+	}
 
 	userMentionMap := a.MentionsToTeamMembers(rctx, message, team.Id)
 	maps.Copy(p, userMentionMap.ToURLValues())
