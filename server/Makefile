@@ -110,7 +110,9 @@ endif
 
 # Go Flags
 # Use -buildvcs=false to avoid embedding VCS info which can cause false positives in container scanning tools
-export GOFLAGS ?= -buildvcs=false
+# Leverage all available CPU cores for maximum parallel compilation
+NPROCS ?= $(shell nproc 2>/dev/null || echo 4)
+export GOFLAGS ?= -buildvcs=false -p=$(NPROCS)
 # We need to export GOBIN to allow it to be set
 # for processes spawned from the Makefile
 export GOBIN ?= $(PWD)/bin
@@ -127,6 +129,12 @@ LDFLAGS += -X "github.com/mattermost/mattermost/server/public/model.BuildDate=$(
 LDFLAGS += -X "github.com/mattermost/mattermost/server/public/model.BuildHash=$(BUILD_HASH)"
 LDFLAGS += -X "github.com/mattermost/mattermost/server/public/model.BuildHashEnterprise=$(BUILD_HASH_ENTERPRISE)"
 LDFLAGS += -X "github.com/mattermost/mattermost/server/public/model.BuildEnterpriseReady=$(BUILD_ENTERPRISE_READY)"
+
+# Fast build: strip debug symbols to reduce linking time and binary size by ~40%
+FAST_BUILD ?= true
+ifeq ($(FAST_BUILD),true)
+	LDFLAGS += -s -w
+endif
 
 GO_MAJOR_VERSION = $(shell $(GO) version | cut -c 14- | cut -d' ' -f1 | cut -d'.' -f1)
 GO_MINOR_VERSION = $(shell $(GO) version | cut -c 14- | cut -d' ' -f1 | cut -d'.' -f2)
@@ -693,6 +701,18 @@ validate-go-version: ## Validates the installed version of go against Mattermost
 .PHONY: build-templates
 build-templates: ## Compile all mjml email templates
 	cd $(TEMPLATES_DIR) && $(MAKE) build
+
+.PHONY: build-server-fast
+build-server-fast: setup-go-work ## Fast compiles mattermost server binary using max CPU cores and stripped symbols
+	@echo "Building mattermost binary (fast mode)..."
+	@mkdir -p $(GOBIN)
+	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -tags '$(BUILD_TAGS)' -o $(GOBIN)/mattermost $(PLATFORM_FILES)
+
+.PHONY: run-server-fast
+run-server-fast: build-server-fast client ## Fast starts the server directly using pre-compiled binary
+	@echo "Running pre-compiled mattermost server"
+	mkdir -p $(BUILD_WEBAPP_DIR)/channels/dist/files
+	$(GOBIN)/mattermost server $(RUN_IN_BACKGROUND)
 
 .PHONY: run-server
 run-server: setup-go-work prepackaged-binaries validate-go-version start-docker client ## Starts the server.
