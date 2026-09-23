@@ -256,19 +256,7 @@ export default class PostMessageView extends React.PureComponent<Props, State> {
                     onClick={this.handleFormattedTextClick}
                 >
                     {commandPill ? (
-                        <>
-                            {commandPill}
-                            <PostMarkdown
-                                message={message}
-                                imageProps={this.imageProps}
-                                options={options}
-                                post={post}
-                                channelId={post.channel_id}
-                                showPostEditedIndicator={this.props.showPostEditedIndicator}
-                                isRHS={isRHS}
-                                disableInteractions={disableInteractions}
-                            />
-                        </>
+                        commandPill
                     ) : (
                         <PostMarkdown
                             message={message}
