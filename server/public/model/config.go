@@ -419,6 +419,7 @@ type ServiceSettings struct {
 	EnableOutgoingWebhooks                 *bool    `access:"integrations_integration_management"`
 	EnableOutgoingOAuthConnections         *bool    `access:"integrations_integration_management"`
 	EnableCommands                         *bool    `access:"integrations_integration_management"`
+	EnableRichCommandUI                    *bool    `access:"integrations_integration_management"`
 	OutgoingIntegrationRequestsTimeout     *int64   `access:"integrations_integration_management"` // In seconds.
 	EnablePostUsernameOverride             *bool    `access:"integrations_integration_management"`
 	EnablePostIconOverride                 *bool    `access:"integrations_integration_management"`
@@ -833,6 +834,10 @@ func (s *ServiceSettings) SetDefaults(isUpdate bool) {
 
 	if s.EnableCommands == nil {
 		s.EnableCommands = new(true)
+	}
+
+	if s.EnableRichCommandUI == nil {
+		s.EnableRichCommandUI = new(true)
 	}
 
 	if s.EnablePostUsernameOverride == nil {

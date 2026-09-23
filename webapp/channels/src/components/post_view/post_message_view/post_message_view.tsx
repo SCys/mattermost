@@ -33,6 +33,7 @@ const FULL_HEIGHT_POST_TYPES = new Set([
 type Props = {
     post: Post; /* The post to render the message for */
     enableFormatting?: boolean; /* Set to enable Markdown formatting */
+    enableRichCommandUI?: boolean; /* Switch to control whether to render Discord-style command pills in message */
     options?: TextFormattingOptions; /* Options specific to text formatting */
     compactDisplay?: boolean; /* Set to render post body compactly */
     isRHS?: boolean; /* Flags if the post_message_view is for the RHS (Reply). */
@@ -168,6 +169,83 @@ export default class PostMessageView extends React.PureComponent<Props, State> {
 
         const id = isRHS ? `rhsPostMessageText_${post.id}` : `postMessageText_${post.id}`;
 
+        const renderCommandPill = () => {
+            if (!this.props.enableRichCommandUI || !message || !message.startsWith('/')) {
+                return null;
+            }
+            const match = message.match(/^\/([a-zA-Z0-9_-]+)(?:\s+(.*))?$/s);
+            if (!match) {
+                return null;
+            }
+            const trigger = match[1];
+            const rest = (match[2] || '').trim();
+            const slots: Array<{name: string; value: string}> = [];
+            if (rest) {
+                const flagMatches = [...rest.matchAll(/--([a-zA-Z0-9_-]+)(?:\s+([^\s-]+(?:[^-][^\s-]*)*))?/g)];
+                if (flagMatches.length > 0) {
+                    flagMatches.forEach((m) => {
+                        slots.push({name: m[1], value: m[2] ? m[2].trim() : 'true'});
+                    });
+                } else {
+                    slots.push({name: 'args', value: rest});
+                }
+            }
+
+            return (
+                <div
+                    className='rich-command-post-pill'
+                    style={{
+                        display: 'inline-flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        background: 'rgba(var(--center-channel-color-rgb, 61, 60, 64), 0.05)',
+                        border: '1px solid rgba(var(--center-channel-color-rgb, 61, 60, 64), 0.12)',
+                        margin: '2px 0 6px 0',
+                        fontSize: '13px',
+                        userSelect: 'none',
+                    }}
+                >
+                    <span
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontWeight: 600,
+                            color: 'var(--button-bg, #1c58d9)',
+                            background: 'rgba(var(--button-bg-rgb, 28, 88, 217), 0.12)',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                        }}
+                    >
+                        <span>/</span>
+                        <span>{trigger}</span>
+                    </span>
+                    {slots.map((s, idx) => (
+                        <span
+                            key={idx}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                background: 'rgba(var(--center-channel-color-rgb, 61, 60, 64), 0.08)',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                color: 'var(--center-channel-color, #3d3c40)',
+                            }}
+                        >
+                            <span style={{opacity: 0.7, fontWeight: 500}}>{s.name === 'args' ? '' : `${s.name}:`}</span>
+                            <span style={{fontWeight: 400}}>{s.value}</span>
+                        </span>
+                    ))}
+                </div>
+            );
+        };
+
+        const commandPill = renderCommandPill();
+
         const body = (
             <>
                 <div
@@ -177,16 +255,32 @@ export default class PostMessageView extends React.PureComponent<Props, State> {
                     dir='auto'
                     onClick={this.handleFormattedTextClick}
                 >
-                    <PostMarkdown
-                        message={message}
-                        imageProps={this.imageProps}
-                        options={options}
-                        post={post}
-                        channelId={post.channel_id}
-                        showPostEditedIndicator={this.props.showPostEditedIndicator}
-                        isRHS={isRHS}
-                        disableInteractions={disableInteractions}
-                    />
+                    {commandPill ? (
+                        <>
+                            {commandPill}
+                            <PostMarkdown
+                                message={message}
+                                imageProps={this.imageProps}
+                                options={options}
+                                post={post}
+                                channelId={post.channel_id}
+                                showPostEditedIndicator={this.props.showPostEditedIndicator}
+                                isRHS={isRHS}
+                                disableInteractions={disableInteractions}
+                            />
+                        </>
+                    ) : (
+                        <PostMarkdown
+                            message={message}
+                            imageProps={this.imageProps}
+                            options={options}
+                            post={post}
+                            channelId={post.channel_id}
+                            showPostEditedIndicator={this.props.showPostEditedIndicator}
+                            isRHS={isRHS}
+                            disableInteractions={disableInteractions}
+                        />
+                    )}
                 </div>
                 {messageBodyFooter != null && (
                     <MessageBodyFooterMountNotify onHeightChange={this.checkPostOverflow}>
