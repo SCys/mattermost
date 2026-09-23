@@ -18,14 +18,7 @@ export interface DiscordCommandBarProps {
 
 export const extractSlotsFromHint = (hint: string): CommandSlot[] => {
     if (!hint || !hint.trim()) {
-        return [{
-            name: 'args',
-            label: 'arguments',
-            type: 'string',
-            required: false,
-            value: '',
-            hint: 'arguments',
-        }];
+        return [];
     }
 
     const slots: CommandSlot[] = [];
@@ -119,16 +112,6 @@ export const extractSlotsFromHint = (hint: string): CommandSlot[] => {
                 value: '',
             });
         }
-    }
-
-    if (slots.length === 0) {
-        slots.push({
-            name: 'args',
-            label: 'arguments',
-            type: 'string',
-            required: false,
-            value: '',
-        });
     }
 
     return slots;

@@ -234,14 +234,20 @@ export default class Textbox extends React.PureComponent<Props, State> {
         if (item && item.Suggestion && typeof item.Suggestion === 'string' && item.Suggestion.startsWith('/')) {
             const trigger = item.Suggestion.substring(1).trim();
             const slots = extractSlotsFromHint(item.Hint || '');
-            this.setState({
-                discordCommand: {
-                    active: true,
-                    trigger,
-                    description: item.Description,
-                    slots,
-                },
-            });
+
+            // Only switch to structured slot editor if the command actually requires/defines parameters
+            if (slots.length > 0) {
+                this.setState({
+                    discordCommand: {
+                        active: true,
+                        trigger,
+                        description: item.Description,
+                        slots,
+                    },
+                });
+            } else {
+                this.setState({discordCommand: null});
+            }
         }
     };
 
