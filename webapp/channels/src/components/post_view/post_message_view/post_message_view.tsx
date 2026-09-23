@@ -192,52 +192,20 @@ export default class PostMessageView extends React.PureComponent<Props, State> {
             }
 
             return (
-                <div
-                    className='rich-command-post-pill'
-                    style={{
-                        display: 'inline-flex',
-                        flexWrap: 'wrap',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '4px 8px',
-                        borderRadius: '6px',
-                        background: 'rgba(var(--center-channel-color-rgb, 61, 60, 64), 0.05)',
-                        border: '1px solid rgba(var(--center-channel-color-rgb, 61, 60, 64), 0.12)',
-                        margin: '2px 0 6px 0',
-                        fontSize: '13px',
-                        userSelect: 'none',
-                    }}
-                >
-                    <span
-                        style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            fontWeight: 600,
-                            color: 'var(--button-bg, #1c58d9)',
-                            background: 'rgba(var(--button-bg-rgb, 28, 88, 217), 0.12)',
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                        }}
-                    >
-                        <span>/</span>
-                        <span>{trigger}</span>
+                <div className='rich-command-post-pill'>
+                    <span className='rich-command-post-pill__command'>
+                        <span className='rich-command-post-pill__slash'>/</span>
+                        <span className='rich-command-post-pill__trigger'>{trigger}</span>
                     </span>
                     {slots.map((s, idx) => (
                         <span
                             key={idx}
-                            style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                background: 'rgba(var(--center-channel-color-rgb, 61, 60, 64), 0.08)',
-                                padding: '2px 6px',
-                                borderRadius: '4px',
-                                color: 'var(--center-channel-color, #3d3c40)',
-                            }}
+                            className='rich-command-post-pill__slot'
                         >
-                            <span style={{opacity: 0.7, fontWeight: 500}}>{s.name === 'args' ? '' : `${s.name}:`}</span>
-                            <span style={{fontWeight: 400}}>{s.value}</span>
+                            {s.name !== 'args' && (
+                                <span className='rich-command-post-pill__label'>{`${s.name}:`}</span>
+                            )}
+                            <span className='rich-command-post-pill__value'>{s.value}</span>
                         </span>
                     ))}
                 </div>
