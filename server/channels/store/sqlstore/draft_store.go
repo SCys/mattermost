@@ -66,7 +66,7 @@ func newSqlDraftStore(sqlStore *SqlStore, metrics einterfaces.MetricsInterface) 
 	return &SqlDraftStore{
 		SqlStore:           sqlStore,
 		metrics:            metrics,
-		maxDraftSizeCached: model.PostMessageMaxRunesV1,
+		maxDraftSizeCached: model.PostMessageMaxRunesV2,
 	}
 }
 

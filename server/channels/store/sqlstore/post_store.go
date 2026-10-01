@@ -173,7 +173,7 @@ func newSqlPostStore(sqlStore *SqlStore, metrics einterfaces.MetricsInterface) s
 	s := &SqlPostStore{
 		SqlStore:          sqlStore,
 		metrics:           metrics,
-		maxPostSizeCached: model.PostMessageMaxRunesV1,
+		maxPostSizeCached: model.PostMessageMaxRunesV2,
 	}
 
 	s.postsQuery = s.getQueryBuilder().
