@@ -36,4 +36,37 @@ describe('components/MsgTyping', () => {
         const {container} = renderWithContext(<MsgTyping {...props}/>);
         expect(container).toMatchSnapshot();
     });
+
+    test('should render bot is working when one bot is typing', () => {
+        const typingUsers = [{id: 'bot.user.id', name: 'agent-creative', isBot: true}];
+        const props = {...baseProps, typingUsers};
+
+        const {container} = renderWithContext(<MsgTyping {...props}/>);
+        expect(container).toHaveTextContent('🤖 agent-creative is working...');
+        expect(container.querySelector('.msg-typing--bot')).toBeInTheDocument();
+    });
+
+    test('should render bots are working when multiple bots are typing', () => {
+        const typingUsers = [
+            {id: 'bot.user.1', name: 'agent-creative', isBot: true},
+            {id: 'bot.user.2', name: 'agent-helper', isBot: true},
+        ];
+        const props = {...baseProps, typingUsers};
+
+        const {container} = renderWithContext(<MsgTyping {...props}/>);
+        expect(container).toHaveTextContent('🤖 agent-creative and agent-helper are working...');
+        expect(container.querySelector('.msg-typing--bot')).toBeInTheDocument();
+    });
+
+    test('should render standard typing message when bot and human are typing together', () => {
+        const typingUsers = [
+            {id: 'human.user', name: 'alice', isBot: false},
+            {id: 'bot.user', name: 'agent-creative', isBot: true},
+        ];
+        const props = {...baseProps, typingUsers};
+
+        const {container} = renderWithContext(<MsgTyping {...props}/>);
+        expect(container).toHaveTextContent('alice and agent-creative are typing...');
+        expect(container.querySelector('.msg-typing--bot')).toBeInTheDocument();
+    });
 });

@@ -25903,9 +25903,17 @@
     "defaultMessage": "{users} and {last} are typing...",
     "description": "Typing indicator below the message input when several users are typing; {users} is a comma-separated list of names and {last} is the final name."
   },
+  "msg_typing.areWorking": {
+    "defaultMessage": "🤖 {users} and {last} are working...",
+    "description": "Working indicator below the message input when several bot accounts are working; {users} is a comma-separated list of names and {last} is the final name."
+  },
   "msg_typing.isTyping": {
     "defaultMessage": "{user} is typing...",
     "description": "Typing indicator below the message input when one user is typing; {user} is that user's display name."
+  },
+  "msg_typing.isWorking": {
+    "defaultMessage": "🤖 {user} is working...",
+    "description": "Working indicator below the message input when one bot account is working; {user} is that bot's display name."
   },
   "multiselect.add": {
     "defaultMessage": "Add",

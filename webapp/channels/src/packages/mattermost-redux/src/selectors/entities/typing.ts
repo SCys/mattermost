@@ -11,7 +11,19 @@ import {getUsers} from 'mattermost-redux/selectors/entities/common';
 import {getTeammateNameDisplaySetting} from 'mattermost-redux/selectors/entities/preferences';
 import {displayUsername} from 'mattermost-redux/utils/user_utils';
 
-const getUsersTypingImpl = (profiles: IDMappedObjects<UserProfile>, teammateNameDisplay: string, channelId: string, parentPostId: string, typing: Typing): string[] => {
+export type TypingUser = {
+    id: string;
+    name: string;
+    isBot: boolean;
+};
+
+const getUsersTypingDetailsImpl = (
+    profiles: IDMappedObjects<UserProfile>,
+    teammateNameDisplay: string,
+    channelId: string,
+    parentPostId: string,
+    typing: Typing,
+): TypingUser[] => {
     const id = channelId + parentPostId;
 
     if (typing[id]) {
@@ -19,7 +31,12 @@ const getUsersTypingImpl = (profiles: IDMappedObjects<UserProfile>, teammateName
 
         if (users.length) {
             return users.map((userId) => {
-                return displayUsername(profiles[userId], teammateNameDisplay);
+                const profile = profiles[userId];
+                return {
+                    id: userId,
+                    name: displayUsername(profile, teammateNameDisplay),
+                    isBot: Boolean(profile?.is_bot),
+                };
             });
         }
     }
@@ -27,14 +44,26 @@ const getUsersTypingImpl = (profiles: IDMappedObjects<UserProfile>, teammateName
     return [];
 };
 
-export function makeGetUsersTypingByChannelAndPost(): (state: GlobalState, props: {channelId: string; postId: string}) => string[] {
+export function makeGetUsersTypingDetailsByChannelAndPost(): (
+    state: GlobalState,
+    props: {channelId: string; postId: string},
+) => TypingUser[] {
     return createSelector(
-        'makeGetUsersTypingByChannelAndPost',
+        'makeGetUsersTypingDetailsByChannelAndPost',
         getUsers,
         getTeammateNameDisplaySetting,
         (state: GlobalState, options: {channelId: string; postId: string}) => options.channelId,
         (state: GlobalState, options: {channelId: string; postId: string}) => options.postId,
         (state: GlobalState) => state.entities.typing,
-        getUsersTypingImpl,
+        getUsersTypingDetailsImpl,
+    );
+}
+
+export function makeGetUsersTypingByChannelAndPost(): (state: GlobalState, props: {channelId: string; postId: string}) => string[] {
+    const getUsersTypingDetails = makeGetUsersTypingDetailsByChannelAndPost();
+    return createSelector(
+        'makeGetUsersTypingByChannelAndPost',
+        (state: GlobalState, options: {channelId: string; postId: string}) => getUsersTypingDetails(state, options),
+        (users) => users.map((user) => user.name),
     );
 }

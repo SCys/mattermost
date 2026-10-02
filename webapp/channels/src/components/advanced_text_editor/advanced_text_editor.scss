@@ -250,4 +250,8 @@
     font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
+
+    &--bot {
+        font-style: italic;
+    }
 }

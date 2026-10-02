@@ -8,10 +8,16 @@ import {WebSocketEvents, type WebSocketMessage} from '@mattermost/client';
 
 import {useWebSocket} from 'utils/use_websocket';
 
+export type TypingUserInfo = {
+    id?: string;
+    name: string;
+    isBot?: boolean;
+};
+
 type Props = {
     channelId: string;
     rootId: string;
-    typingUsers: string[];
+    typingUsers: Array<string | TypingUserInfo>;
     userStartedTyping: (userId: string, channelId: string, rootId: string, now: number) => void;
     userStoppedTyping: (userId: string, channelId: string, rootId: string, now: number) => void;
 };
@@ -43,41 +49,75 @@ export default function MsgTyping(props: Props) {
     });
 
     const getTypingText = () => {
-        let users: string[] = [];
-        let numUsers = 0;
-        if (props.typingUsers) {
-            users = [...props.typingUsers];
-            numUsers = users.length;
-        }
+        const users: TypingUserInfo[] = (props.typingUsers || []).map((u) => {
+            if (typeof u === 'string') {
+                return {name: u, isBot: false};
+            }
+            return u;
+        });
 
+        const numUsers = users.length;
         if (numUsers === 0) {
             return '';
         }
+
         if (numUsers === 1) {
+            const user = users[0];
+            if (user.isBot) {
+                return (
+                    <FormattedMessage
+                        id='msg_typing.isWorking'
+                        defaultMessage='🤖 {user} is working...'
+                        values={{
+                            user: user.name,
+                        }}
+                    />
+                );
+            }
+
             return (
                 <FormattedMessage
                     id='msg_typing.isTyping'
                     defaultMessage='{user} is typing...'
                     values={{
-                        user: users[0],
+                        user: user.name,
                     }}
                 />
             );
         }
-        const last = users.pop();
+
+        const allBots = users.every((u) => u.isBot);
+        const names = users.map((u) => u.name);
+        const last = names.pop();
+
+        if (allBots) {
+            return (
+                <FormattedMessage
+                    id='msg_typing.areWorking'
+                    defaultMessage='🤖 {users} and {last} are working...'
+                    values={{
+                        users: names.join(', '),
+                        last,
+                    }}
+                />
+            );
+        }
+
         return (
             <FormattedMessage
                 id='msg_typing.areTyping'
                 defaultMessage='{users} and {last} are typing...'
                 values={{
-                    users: (users.join(', ')),
+                    users: names.join(', '),
                     last,
                 }}
             />
         );
     };
 
+    const hasBot = (props.typingUsers || []).some((u) => typeof u !== 'string' && u.isBot);
+
     return (
-        <span className='msg-typing'>{getTypingText()}</span>
+        <span className={`msg-typing${hasBot ? ' msg-typing--bot' : ''}`}>{getTypingText()}</span>
     );
 }
