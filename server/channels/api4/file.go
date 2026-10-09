@@ -7,11 +7,13 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -688,6 +690,16 @@ func getFileThumbnail(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if proxyImagor(c, w, r, info, "thumbnail", forceDownload) {
+		auditRec := c.MakeAuditRecord(model.AuditEventGetFileThumbnail, model.AuditStatusSuccess)
+		defer c.LogAuditRec(auditRec)
+		model.AddEventParameterToAuditRec(auditRec, "file_id", c.Params.FileId)
+		if !isMember {
+			model.AddEventParameterToAuditRec(auditRec, "non_channel_member_access", true)
+		}
+		return
+	}
+
 	fileReader, err := c.App.FileReader(info.ThumbnailPath)
 	if err != nil {
 		c.Err = err
@@ -820,6 +832,16 @@ func getFilePreview(c *Context, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if proxyImagor(c, w, r, info, "preview", forceDownload) {
+		auditRec := c.MakeAuditRecord(model.AuditEventGetFilePreview, model.AuditStatusSuccess)
+		defer c.LogAuditRec(auditRec)
+		model.AddEventParameterToAuditRec(auditRec, "file_id", c.Params.FileId)
+		if !isMember {
+			model.AddEventParameterToAuditRec(auditRec, "non_channel_member_access", true)
+		}
+		return
+	}
+
 	fileReader, err := c.App.FileReader(info.PreviewPath)
 	if err != nil {
 		c.Err = err
@@ -836,6 +858,95 @@ func getFilePreview(c *Context, w http.ResponseWriter, r *http.Request) {
 	if !isMember {
 		model.AddEventParameterToAuditRec(auditRec, "non_channel_member_access", true)
 	}
+}
+
+func proxyImagor(c *Context, w http.ResponseWriter, r *http.Request, info *model.FileInfo, variant string, forceDownload bool) bool {
+	imagorURL := ""
+	if c.App.Config().FileSettings.ImagorURL != nil {
+		imagorURL = strings.TrimRight(*c.App.Config().FileSettings.ImagorURL, "/")
+	}
+	if imagorURL == "" {
+		return false
+	}
+
+	// We only proxy if we have the original file path
+	if info.Path == "" {
+		return false
+	}
+
+	prefix := "mattermost"
+	if c.App.Config().FileSettings.ImagorPrefix != nil && *c.App.Config().FileSettings.ImagorPrefix != "" {
+		prefix = strings.Trim(*c.App.Config().FileSettings.ImagorPrefix, "/")
+	}
+
+	// Determine sizing for imagor
+	// Thumbnail: fit-in/400x400
+	// Preview: fit-in/1920x1080 (or 1024x1024)
+	var sizeFilter string
+	if variant == "thumbnail" {
+		sizeFilter = "fit-in/400x400"
+	} else {
+		sizeFilter = "fit-in/1920x1080"
+	}
+
+	cleanPath := strings.TrimLeft(info.Path, "/")
+	imagePath := prefix + "/" + cleanPath
+	targetURL := fmt.Sprintf("%s/unsafe/%s/%s", imagorURL, sizeFilter, imagePath)
+
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
+	if err != nil {
+		c.Logger.Warn("Failed to create request for Imagor", mlog.Err(err))
+		return false
+	}
+
+	// Forward client Accept header to allow Imagor content negotiation (e.g. image/webp)
+	if accept := r.Header.Get("Accept"); accept != "" {
+		req.Header.Set("Accept", accept)
+	}
+
+	resp, err := c.App.HTTPService().MakeClient(true).Do(req)
+	if err != nil {
+		c.Logger.Warn("Failed to proxy image to Imagor", mlog.String("target_url", targetURL), mlog.Err(err))
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		c.Logger.Warn("Imagor returned non-200 status", mlog.Int("status_code", resp.StatusCode), mlog.String("target_url", targetURL))
+		return false
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		if variant == "thumbnail" {
+			contentType = ThumbnailImageType
+		} else {
+			contentType = PreviewImageType
+		}
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	if cacheControl := resp.Header.Get("Cache-Control"); cacheControl != "" {
+		w.Header().Set("Cache-Control", cacheControl)
+	} else {
+		w.Header().Set("Cache-Control", "private, max-age=86400")
+	}
+
+	if vary := resp.Header.Get("Vary"); vary != "" {
+		w.Header().Set("Vary", vary)
+	}
+
+	if forceDownload {
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment;filename=\"%s\"", info.Name))
+	} else {
+		w.Header().Set("Content-Disposition", "inline")
+	}
+
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		c.Logger.Debug("Failed to stream Imagor response body to client", mlog.Err(err))
+	}
+
+	return true
 }
 
 func getFileInfo(c *Context, w http.ResponseWriter, r *http.Request) {

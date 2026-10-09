@@ -1915,6 +1915,10 @@ type FileSettings struct {
 	ExportAzureSSL                           *bool   `access:"environment_file_storage,write_restrictable"`
 	ExportAzureRequestTimeoutMilliseconds    *int64  `access:"environment_file_storage,write_restrictable"` // telemetry: none
 	ExportAzurePresignExpiresSeconds         *int64  `access:"environment_file_storage,write_restrictable"` // telemetry: none
+
+	// Imagor image proxy integration
+	ImagorURL    *string `access:"environment_file_storage"`
+	ImagorPrefix *string `access:"environment_file_storage"`
 }
 
 func (s *FileSettings) SetDefaults(isUpdate bool) {
@@ -1979,6 +1983,14 @@ func (s *FileSettings) SetDefaults(isUpdate bool) {
 	if s.InitialFont == nil {
 		// Defaults to "nunito-bold.ttf"
 		s.InitialFont = new("nunito-bold.ttf")
+	}
+
+	if s.ImagorURL == nil {
+		s.ImagorURL = new("")
+	}
+
+	if s.ImagorPrefix == nil {
+		s.ImagorPrefix = new("mattermost")
 	}
 
 	if s.AmazonS3AccessKeyId == nil {

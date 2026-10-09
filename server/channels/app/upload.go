@@ -323,11 +323,14 @@ func (a *App) UploadData(rctx request.CTX, us *model.UploadSession, rd io.Reader
 		nameWithoutExtension := info.Name[:strings.LastIndex(info.Name, ".")]
 		info.PreviewPath = filepath.Dir(info.Path) + "/" + nameWithoutExtension + "_preview." + getFileExtFromMimeType(info.MimeType)
 		info.ThumbnailPath = filepath.Dir(info.Path) + "/" + nameWithoutExtension + "_thumb." + getFileExtFromMimeType(info.MimeType)
-		imgData, fileErr := a.ReadFile(uploadPath)
-		if fileErr != nil {
-			return nil, fileErr
+		skipThumbnails := a.Config().FileSettings.ImagorURL != nil && *a.Config().FileSettings.ImagorURL != ""
+		if !skipThumbnails {
+			imgData, fileErr := a.ReadFile(uploadPath)
+			if fileErr != nil {
+				return nil, fileErr
+			}
+			a.HandleImages(rctx, []string{info.PreviewPath}, []string{info.ThumbnailPath}, [][]byte{imgData})
 		}
-		a.HandleImages(rctx, []string{info.PreviewPath}, []string{info.ThumbnailPath}, [][]byte{imgData})
 	}
 
 	if us.Type == model.UploadTypeImport {

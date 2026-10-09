@@ -750,6 +750,7 @@ type UploadFileTask struct {
 
 	imgDecoder *imaging.Decoder
 	imgEncoder *imaging.Encoder
+	imagorURL  string
 }
 
 func (t *UploadFileTask) init(a *App) {
@@ -782,6 +783,9 @@ func (t *UploadFileTask) init(a *App) {
 	t.pluginsEnvironment = a.GetPluginsEnvironment()
 	t.writeFile = a.WriteFile
 	t.saveToDatabase = a.Srv().Store().FileInfo().Save
+	if a.Config().FileSettings.ImagorURL != nil {
+		t.imagorURL = *a.Config().FileSettings.ImagorURL
+	}
 }
 
 // UploadFileX uploads a single file as specified in t. It applies the upload
@@ -1001,19 +1005,25 @@ func (t *UploadFileTask) postprocessImage(file io.Reader) {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(3)
-	// Generating thumbnail and preview regardless of HasPreviewImage value.
-	// This is needed on mobile in case of animated GIFs.
-	go func() {
-		defer wg.Done()
-		writeImage(imaging.GenerateThumbnail(decoded, imageThumbnailWidth, imageThumbnailHeight), t.fileinfo.ThumbnailPath)
-	}()
+	// If Imagor is enabled, skip server-side CPU-heavy thumbnail and preview generation
+	skipThumbnails := t.imagorURL != ""
 
-	go func() {
-		defer wg.Done()
-		writeImage(imaging.GeneratePreview(decoded, imagePreviewWidth), t.fileinfo.PreviewPath)
-	}()
+	if !skipThumbnails {
+		wg.Add(2)
+		// Generating thumbnail and preview regardless of HasPreviewImage value.
+		// This is needed on mobile in case of animated GIFs.
+		go func() {
+			defer wg.Done()
+			writeImage(imaging.GenerateThumbnail(decoded, imageThumbnailWidth, imageThumbnailHeight), t.fileinfo.ThumbnailPath)
+		}()
 
+		go func() {
+			defer wg.Done()
+			writeImage(imaging.GeneratePreview(decoded, imagePreviewWidth), t.fileinfo.PreviewPath)
+		}()
+	}
+
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		if t.fileinfo.MiniPreview == nil {
